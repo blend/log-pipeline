@@ -1,0 +1,43 @@
+Metadata:
+  License: MIT
+
+Description: >
+  Deploys a CloudWatch log group and subscription filter to forward logs to a
+  CloudWatch log destination in a separate account.
+
+Parameters:
+
+  DestinationArn:
+    Description: The ARN of the CloudWatch log destination.
+    Type: String
+
+  LogGroupName:
+    Description: The name of the CloudWatch log group for agents to target.
+    Type: String
+    Default: "agent-logs"
+
+  LogGroupRetentionDays:
+    Description: The number of days to retain logs in the log group.
+    Type: Number
+    Default: 7
+
+  SubscriptionFilterPattern:
+    Description: The filter pattern for the subscription filter forwarding logs.
+    Type: String
+    Default: ""
+
+Resources:
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      RetentionInDays: !Ref SubscriptionFilterPattern
+
+  SubscriptionFilter:
+    Type: AWS::Logs::SubscriptionFilter
+    Properties:
+      DestinationArn: !Ref DestinationArn
+      FilterPattern: !Ref SubscriptionFilterPattern
+      LogGroupName: !Ref LogGroup
+

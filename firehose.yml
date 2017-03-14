@@ -1,0 +1,165 @@
+Metadata:
+  License: MIT
+
+Description: Deploys a Kinesis Firehose.
+
+Parameters:
+  LogGroupName:
+    Description: The log group name of the elasticsearch firehose delivery.
+    Type: String
+    Default: /aws/kinesisfirehose/elasticsearch
+
+  ElasticsearchDomainArn:
+    Description: The domain ARN of the Elasticsearch domain.
+    Type: String
+
+  FirehoseBackupS3KmsKeyArn:
+    Description: >
+      The ARN of the KMS key for encrypting the S3 backups from Kinesis Firehose.
+    Type: String
+
+Resources:
+
+  FirehoseBackupS3Bucket:
+    DeletionPolicy: Retain
+    Type: AWS::S3::Bucket
+    Properties:
+      LifecycleConfiguration:
+        Rules:
+          - Id: GlacierRule
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: "180"
+                StorageClass: Glacier
+
+  FirehoseLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      RetentionInDays: 7
+
+  FirehoseElasticsearchLogStream:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref FirehoseLogGroup
+      LogStreamName: elasticsearchDelivery
+
+  FirehoseS3BackupLogStream:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref FirehoseLogGroup
+      LogStreamName: s3Backup
+
+  FirehoseElasticsearchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                "sts:ExternalId": !Ref AWS::AccountId
+      Policies:
+        - PolicyName: AllowElasticsearch
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ""
+                Effect: Allow
+                Action:
+                  - "kms:Decrypt"
+                  - "kms:GenerateDataKey"
+                Resource: !Ref FirehoseBackupS3KmsKeyArn
+                Condition:
+                  StringEquals:
+                    "kms:ViaService": !Sub "s3.${ AWS::Region }.amazonaws.com"
+                  StringLike:
+                    "kms:EncryptionContext:aws:s3:arn": !Sub "arn:aws:s3:::${ FirehoseBackupS3Bucket }/*"
+              - Sid: ""
+                Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:GetBucketLocation
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                  - s3:PutObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${ FirehoseBackupS3Bucket }"
+                  - !Sub "arn:aws:s3:::${ FirehoseBackupS3Bucket }/*"
+              - Sid: ""
+                Effect: Allow
+                Action:
+                  - es:DescribeElasticsearchDomain
+                  - es:DescribeElasticsearchDomains
+                  - es:DescribeElasticsearchDomainConfig
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource:
+                  - !Ref ElasticsearchDomainArn
+                  - !Sub "${ ElasticsearchDomainArn }/*"
+              - Sid: ""
+                Effect: Allow
+                Action:
+                  - es:ESHttpGet
+                Resource:
+                  - !Sub "${ ElasticsearchDomainArn }/_all/_settings"
+                  - !Sub "${ ElasticsearchDomainArn }/_cluster/stats"
+                  - !Sub "${ ElasticsearchDomainArn }/logs-*/_mapping/firehose"
+                  - !Sub "${ ElasticsearchDomainArn }/_nodes"
+                  - !Sub "${ ElasticsearchDomainArn }/_nodes/stats"
+                  - !Sub "${ ElasticsearchDomainArn }/_nodes/*/stats"
+                  - !Sub "${ ElasticsearchDomainArn }/_stats"
+                  - !Sub "${ ElasticsearchDomainArn }/logs-*/_stats"
+              - Sid: ""
+                Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:aws:logs:${ AWS::Region }:${ AWS::AccountId }:log-group:${ LogGroupName }:log-stream:*"
+
+  ElasticsearchDeliveryStream:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      ElasticsearchDestinationConfiguration:
+        BufferingHints:
+          IntervalInSeconds: 300
+          SizeInMBs: 5
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Ref LogGroupName
+          LogStreamName: elasticsearchDelivery
+        DomainARN: !Ref ElasticsearchDomainArn
+        IndexName: logs
+        IndexRotationPeriod: OneDay
+        TypeName: firehose
+        RetryOptions:
+          DurationInSeconds: 300
+        RoleARN: !GetAtt FirehoseElasticsearchRole.Arn
+        S3BackupMode: AllDocuments
+        S3Configuration:
+          BucketARN: !Sub "arn:aws:s3:::${ FirehoseBackupS3Bucket }"
+          BufferingHints:
+            IntervalInSeconds: 300
+            SizeInMBs: 5
+          CompressionFormat: GZIP
+          EncryptionConfiguration:
+            KMSEncryptionConfig:
+              AWSKMSKeyARN: !Ref FirehoseBackupS3KmsKeyArn
+          Prefix: firehose
+          RoleARN: !GetAtt FirehoseElasticsearchRole.Arn
+          CloudWatchLoggingOptions:
+            Enabled: true
+            LogGroupName: !Ref LogGroupName
+            LogStreamName: s3Backup
+
+Outputs:
+
+  ElasticsearchDeliveryStreamName:
+    Description: The firehose delivery stream name.
+    Value: !Ref ElasticsearchDeliveryStream
+

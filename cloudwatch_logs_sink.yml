@@ -1,0 +1,173 @@
+Metadata:
+  License: MIT
+
+Description: Deploys a CloudWatch log destination to a Kinesis Stream.
+
+Parameters:
+
+  SubscriptionFilterAccountId:
+    Description: The account ID of the subscription filter.
+    Type: String
+
+  LogSinkKinesisStreamName:
+    Description: The name of the log sink Kinesis stream.
+    Type: String
+    Default: LogSinkStream
+
+  LogSinkKinesisStreamShardCount:
+    Description: Number of shards in the log sink Kinesis stream.
+    Type: Number
+    Default: 1
+
+  LogSinkFirehoseDeliveryStream:
+    Description: >
+      The name of the Firehose Delivery Stream to forward transformed events to.
+    Type: String
+
+Resources:
+
+  ForwardToFirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: PullFromKinesisStream
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "kinesis:GetRecords"
+                  - "kinesis:GetShardIterator"
+                  - "kinesis:DescribeStream"
+                  - "kinesis:ListStreams"
+                Resource:
+                  - !GetAtt LogSinkKinesisStream.Arn
+        - PolicyName: ForwardToFirehose
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "firehose:PutRecord"
+                  - "firehose:PutRecordBatch"
+                Resource:
+                  - !Sub "arn:aws:firehose:${ AWS::Region }:${ AWS::AccountId }:deliverystream/${ LogSinkFirehoseDeliveryStream }"
+
+  ForwardToFirehoseLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt ForwardToFirehoseRole.Arn
+      Code:
+        ZipFile: !Sub |
+          import base64
+          import json
+          import itertools
+          import zlib
+          import boto3
+
+          MESSAGE_BATCH_MAX_COUNT = 500 #limit from firehose put_record_batch api
+
+          def chunker(iterable, chunksize):
+              """
+              Return elements from the iterable in `chunksize`-ed lists. The last returned
+              chunk may be smaller (if length of collection is not divisible by `chunksize`).
+          
+              >>> print list(chunker(xrange(10), 3))
+              [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]
+              """
+              i = iter(iterable)
+              while True:
+                  wrapped_chunk = [list(itertools.islice(i, int(chunksize)))]
+                  if not wrapped_chunk[0]:
+                      break
+                  yield wrapped_chunk.pop()
+
+          def handler(event, context):
+              client = boto3.client('firehose')
+              for record in event['Records']:
+                  compressed_record_data = record['kinesis']['data']
+                  record_data = json.loads(zlib.decompress(base64.b64decode(compressed_record_data), 16+zlib.MAX_WBITS))
+
+                  for log_event_chunk in chunker(record_data['logEvents'], MESSAGE_BATCH_MAX_COUNT):
+                      message_batch = [{'Data': x['message']} for x in log_event_chunk]
+                      if message_batch:
+                          client.put_record_batch(
+                              DeliveryStreamName='${ LogSinkFirehoseDeliveryStream }',
+                              Records=message_batch)
+      Runtime: python2.7
+      Timeout: 30
+
+  LogSinkKinesisStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Ref LogSinkKinesisStreamName
+      ShardCount: !Ref LogSinkKinesisStreamShardCount
+
+  ForwardToFirehoseEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      Enabled: true
+      EventSourceArn: !GetAtt LogSinkKinesisStream.Arn
+      FunctionName: !Ref ForwardToFirehoseLambda
+      BatchSize: 50
+      StartingPosition: TRIM_HORIZON
+
+  LogDestinationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub "logs.${ AWS::Region }.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: LogDestinationPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ''
+                Effect: Allow
+                Action: "kinesis:PutRecord"
+                Resource: !GetAtt LogSinkKinesisStream.Arn
+
+  LogDestination:
+    Type: AWS::Logs::Destination
+    Properties:
+      DestinationName: LogSink
+      DestinationPolicy: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Sid": "",
+            "Effect": "Allow",
+            "Principal": {
+              "AWS": "${ SubscriptionFilterAccountId}"
+            },
+            "Action": "logs:PutSubscriptionFilter",
+            "Resource": "*"
+          }]
+        }
+      RoleArn: !GetAtt LogDestinationRole.Arn
+      TargetArn: !GetAtt LogSinkKinesisStream.Arn
+
+Output:
+
+  LogDestinationArn:
+    Description: The ARN of the CloudWatch Log Destination.
+    Value: !Sub "arn:aws:logs:${ AWS::Region }:${ AWS::AccountId }:destination:${ LogDestination }"
+
