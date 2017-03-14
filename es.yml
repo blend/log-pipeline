@@ -1,0 +1,57 @@
+Metadata:
+  License: MIT
+
+Description: Deploys an Elasticsearch cluster.
+
+Parameters:
+
+  KibanaJumpboxPublicIpAddress:
+    Description: >
+      The public IP address of the Kibana jumpbox. Requests to Kibana are
+      through this machine.
+    Type: String
+
+Resources:
+
+  ElasticsearchDomain: 
+    Type: "AWS::Elasticsearch::Domain"
+    Properties: 
+      ElasticsearchClusterConfig: 
+        DedicatedMasterEnabled: "true"
+        InstanceCount: "2"
+        ZoneAwarenessEnabled: "true"
+        InstanceType: "m3.large.elasticsearch"
+        DedicatedMasterType: "m3.medium.elasticsearch"
+        DedicatedMasterCount: "3"
+      ElasticsearchVersion: "5.1"
+      EBSOptions: 
+        EBSEnabled: true
+        Iops: 0
+        VolumeSize: 512
+        VolumeType: "gp2"
+      SnapshotOptions: 
+        AutomatedSnapshotStartHour: "0"
+      AccessPolicies: 
+        Version: "2012-10-17"
+        Statement: 
+          - Sid: "AllowEsAllForFluentdLogAggregator"
+            Effect: "Allow"
+            Principal: "*"
+            Condition:
+              IpAddress:
+                "aws:SourceIp":
+                  - !Ref KibanaJumpboxPublicIpAddress
+            Action: "es:*"
+      AdvancedOptions: 
+        rest.action.multi.allow_explicit_index: "true"
+
+Outputs:
+
+  ElasticseachDomainEndpoint:
+    Description: The endpoint of the Elasticsearch Domain.
+    Value: !GetAtt ElasticsearchDomain.Endpoint
+
+  ElasticsearchDomainArn:
+    Description: The ARN of the Elasticsearch Domain.
+    Value: !GetAtt ElasticsearchDomain.Arn
+
