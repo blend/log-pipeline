@@ -54,7 +54,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+        Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
@@ -62,13 +62,13 @@ Resources:
             Action: sts:AssumeRole
             Condition:
               StringEquals:
-                "sts:ExternalId": !Sub "${ AWS::AccountId }"
+                "sts:ExternalId": !Ref AWS::AccountId
       Policies:
         - PolicyName: AllowElasticsearch
           PolicyDocument:
-            Version: '2012-10-17'
+            Version: "2012-10-17"
             Statement:
-              - Sid: ''
+              - Sid: ""
                 Effect: Allow
                 Action:
                   - "kms:Decrypt"
@@ -79,7 +79,7 @@ Resources:
                     "kms:ViaService": !Sub "s3.${ AWS::Region }.amazonaws.com"
                   StringLike:
                     "kms:EncryptionContext:aws:s3:arn": !Sub "arn:aws:s3:::${ FirehoseBackupS3Bucket }/*"
-              - Sid: ''
+              - Sid: ""
                 Effect: Allow
                 Action:
                   - s3:AbortMultipartUpload
@@ -91,7 +91,7 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:s3:::${ FirehoseBackupS3Bucket }"
                   - !Sub "arn:aws:s3:::${ FirehoseBackupS3Bucket }/*"
-              - Sid: ''
+              - Sid: ""
                 Effect: Allow
                 Action:
                   - es:DescribeElasticsearchDomain
@@ -102,7 +102,7 @@ Resources:
                 Resource:
                   - !Ref ElasticsearchDomainArn
                   - !Sub "${ ElasticsearchDomainArn }/*"
-              - Sid: ''
+              - Sid: ""
                 Effect: Allow
                 Action:
                   - es:ESHttpGet
@@ -115,7 +115,7 @@ Resources:
                   - !Sub "${ ElasticsearchDomainArn }/_nodes/*/stats"
                   - !Sub "${ ElasticsearchDomainArn }/_stats"
                   - !Sub "${ ElasticsearchDomainArn }/logs-*/_stats"
-              - Sid: ''
+              - Sid: ""
                 Effect: Allow
                 Action:
                   - logs:PutLogEvents
