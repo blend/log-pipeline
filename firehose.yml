@@ -109,12 +109,12 @@ Resources:
                 Resource:
                   - !Sub "${ ElasticsearchDomainArn }/_all/_settings"
                   - !Sub "${ ElasticsearchDomainArn }/_cluster/stats"
-                  - !Sub "${ ElasticsearchDomainArn }/logs*/_mapping/firehose"
+                  - !Sub "${ ElasticsearchDomainArn }/logs-*/_mapping/firehose"
                   - !Sub "${ ElasticsearchDomainArn }/_nodes"
                   - !Sub "${ ElasticsearchDomainArn }/_nodes/stats"
                   - !Sub "${ ElasticsearchDomainArn }/_nodes/*/stats"
                   - !Sub "${ ElasticsearchDomainArn }/_stats"
-                  - !Sub "${ ElasticsearchDomainArn }/logs*/_stats"
+                  - !Sub "${ ElasticsearchDomainArn }/logs-*/_stats"
               - Sid: ''
                 Effect: Allow
                 Action:
