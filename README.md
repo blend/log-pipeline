@@ -1,5 +1,5 @@
 # log-pipeline
-Centralize all logs in a separate AWS account.
+Centralize all logs in a separate AWS account. See [blog post](https://blend.com/centralizing-logs-in-an-isolated-aws-account/).
 
 ## Deploying
 
