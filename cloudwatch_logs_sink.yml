@@ -165,7 +165,7 @@ Resources:
       RoleArn: !GetAtt LogDestinationRole.Arn
       TargetArn: !GetAtt LogSinkKinesisStream.Arn
 
-Output:
+Outputs:
 
   LogDestinationArn:
     Description: The ARN of the CloudWatch Log Destination.
