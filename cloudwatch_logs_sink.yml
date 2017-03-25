@@ -24,6 +24,11 @@ Parameters:
       The name of the Firehose Delivery Stream to forward transformed events to.
     Type: String
 
+  LogDestinationName:
+    Description: The name of the CloudWatch Log Destination.
+    Type: String
+    Default: LogSink
+
 Resources:
 
   ForwardToFirehoseRole:
@@ -148,7 +153,7 @@ Resources:
   LogDestination:
     Type: AWS::Logs::Destination
     Properties:
-      DestinationName: LogSink
+      DestinationName: !Ref LogDestinationName
       DestinationPolicy: !Sub |
         {
           "Version": "2012-10-17",
@@ -156,7 +161,7 @@ Resources:
             "Sid": "",
             "Effect": "Allow",
             "Principal": {
-              "AWS": "${ SubscriptionFilterAccountId}"
+              "AWS": "${ SubscriptionFilterAccountId }"
             },
             "Action": "logs:PutSubscriptionFilter",
             "Resource": "*"
