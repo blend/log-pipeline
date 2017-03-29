@@ -13,6 +13,16 @@ Parameters:
     Description: The domain ARN of the Elasticsearch domain.
     Type: String
 
+  ElasticsearchIndex:
+    Description: The Elasticsearch index to use.
+    Type: String
+    Default: logs
+
+  ElasticsearchType:
+    Description: The type field of events ingested into Elasticsearch.
+    Type: String
+    Default: firehose
+
   FirehoseBackupS3KmsKeyArn:
     Description: >
       The ARN of the KMS key for encrypting the S3 backups from Kinesis Firehose.
@@ -109,12 +119,12 @@ Resources:
                 Resource:
                   - !Sub "${ ElasticsearchDomainArn }/_all/_settings"
                   - !Sub "${ ElasticsearchDomainArn }/_cluster/stats"
-                  - !Sub "${ ElasticsearchDomainArn }/logs-*/_mapping/firehose"
+                  - !Sub "${ ElasticsearchDomainArn }/${ ElasticsearchIndex }-*/_mapping/${ ElasticsearchType }"
                   - !Sub "${ ElasticsearchDomainArn }/_nodes"
                   - !Sub "${ ElasticsearchDomainArn }/_nodes/stats"
                   - !Sub "${ ElasticsearchDomainArn }/_nodes/*/stats"
                   - !Sub "${ ElasticsearchDomainArn }/_stats"
-                  - !Sub "${ ElasticsearchDomainArn }/logs-*/_stats"
+                  - !Sub "${ ElasticsearchDomainArn }/${ ElasticsearchIndex }-*/_stats"
               - Sid: ""
                 Effect: Allow
                 Action:
@@ -134,9 +144,9 @@ Resources:
           LogGroupName: !Ref LogGroupName
           LogStreamName: elasticsearchDelivery
         DomainARN: !Ref ElasticsearchDomainArn
-        IndexName: logs
+        IndexName: !Ref ElasticsearchIndex
         IndexRotationPeriod: OneDay
-        TypeName: firehose
+        TypeName: !Ref ElasticsearchType
         RetryOptions:
           DurationInSeconds: 300
         RoleARN: !GetAtt FirehoseElasticsearchRole.Arn
@@ -150,7 +160,7 @@ Resources:
           EncryptionConfiguration:
             KMSEncryptionConfig:
               AWSKMSKeyARN: !Ref FirehoseBackupS3KmsKeyArn
-          Prefix: firehose
+          Prefix: !Ref ElasticsearchType
           RoleARN: !GetAtt FirehoseElasticsearchRole.Arn
           CloudWatchLoggingOptions:
             Enabled: true
